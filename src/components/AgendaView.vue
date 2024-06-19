@@ -3,24 +3,27 @@
     <button @click="showModal = true" class="Addbutton">Add Event</button>
     <div v-if="showModal" class="modal-overlay">
       <div class="modal">
-        <h2>Add Event</h2>
-        <label for="title">Title:</label>
-        <input type="text" id="title" v-model="newEventTitle"><br><br>
+        <h2>{{ isEditMode ? 'Edit Event' : 'Add Event' }}</h2>
+        <form @submit.prevent="validateAndSaveEvent">
+          <label for="title">Title:</label>
+          <input type="text" id="title" v-model="newEventTitle"><br><br>
 
-        <label for="start-date">Start Date:</label>
-        <input type="date" id="start-date" v-model="newEventStartDate"><br><br>
+          <label for="start-date">Start Date:</label>
+          <input type="date" id="start-date" v-model="newEventStartDate"><br><br>
 
-        <label for="end-date">End Date:</label>
-        <input type="date" id="end-date" v-model="newEventEndDate"><br><br>
+          <label for="end-date">End Date:</label>
+          <input type="date" id="end-date" v-model="newEventEndDate"><br><br>
 
-        <label for="color">Color:</label>
-        <input type="color" id="color" v-model="newEventColor"><br><br>
+          <label for="color">Color:</label>
+          <input type="color" id="color" v-model="newEventColor"><br><br>
 
-        <label for="description">Description:</label><br>
-        <textarea id="description" v-model="newEventDescription"></textarea><br><br>
+          <label for="description">Description:</label><br>
+          <textarea id="description" v-model="newEventDescription"></textarea><br><br>
 
-        <button @click="addEvent">Add</button>
-        <button @click="showModal = false">Cancel</button>
+          <button type="submit">{{ isEditMode ? 'Save' : 'Add' }}</button>
+          <button @click="closeModal">Cancel</button>
+        </form>
+        <div v-if="errorMessage" class="error-message">{{ errorMessage }}</div>
       </div>
     </div>
     <FullCalendar
@@ -29,11 +32,11 @@
       @eventClick="handleEventClick"
       class="calendar"
     ></FullCalendar>
-    
   </v-app>
 </template>
 
 <script>
+import { ref } from 'vue'
 import FullCalendar from '@fullcalendar/vue3'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import timeGridPlugin from '@fullcalendar/timegrid'
@@ -44,168 +47,209 @@ export default {
   components: {
     FullCalendar
   },
-  data() {
-    return {
-      newEventTitle: '',
-      newEventDate: '',
-      showModal: false,         // Controls modal visibility
-      newEventStartDate: '',    // New field for start date
-      newEventEndDate: '',      // New field for end date
-      newEventColor: '#3788d8', // Default color (blue)
-      newEventDescription: '',  // New field for description
-      calendarOptions: {
-        plugins: [dayGridPlugin, interactionPlugin, timeGridPlugin, listPlugin],
-        initialView: 'dayGridMonth',
-        exclusiveEndDates: true,
-        headerToolbar: {
-          left: 'prev,next today',
-          center: 'title',
-          right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
-        },
-        weekends: true,
-        events: [
-          // {
-          //   title: 'The calendar can display background events',
-          //   start: '2024-06-16T10:00:00',
-          //   color: 'red'
-          // },
-          {
-            title: 'All-day events can be displayed at the top',
-            start: '2024-06-17',
-            end: '2024-06-19',
-            display: 'background',
-            color: 'purple'
-          },
-          // {
-          //   title: 'An event may span to another day',
-          //   start: '2024-06-17T16:00:00',
-          //   end: '2024-06-18T03:00:00',
-          //   color: 'blue'
-          // },
-          // {
-          //   title: 'Events can be assigned to resources',
-          //   start: '2024-06-18T09:00:00',
-          //   color: 'cyan'
-          // },
-          // {
-          //   title: 'Overlapping events are positioned automatically',
-          //   start: '2024-06-19T15:00:00',
-          //   end: '2024-06-19T17:00:00',
-          //   color: 'green'
-          // },
-          // {
-          //   title: 'You have complete control over the events',
-          //   start: '2024-06-20T10:00:00',
-          //   end: '2024-06-20T11:30:00',
-          //   color: 'orange'
-          // },
-          // {
-          //   title: '...and you can drag and drop the events',
-          //   start: '2024-06-20T14:00:00',
-          //   end: '2024-06-20T15:00:00',
-          //   color: 'red'
-          // },
-          // {
-          //   title: 'Another event',
-          //   start: '2024-06-20T18:00:00',
-          //   end: '2024-06-20T19:00:00',
-          //   color: 'purple'
-          // }
-        ]
-      }
+  setup() {
+    const showModal = ref(false)
+    const newEventTitle = ref('')
+    const newEventStartDate = ref('')
+    const newEventEndDate = ref('')
+    const newEventColor = ref('#3788d8')
+    const newEventDescription = ref('')
+    const errorMessage = ref('')
+    const isEditMode = ref(false)
+    const eventToEdit = ref(null)
+
+    // Configurações do calendário
+    const calendarOptions = ref({
+      plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin],
+      initialView: 'dayGridMonth',
+      headerToolbar: {
+        left: 'prev,next today',
+        center: 'title',
+        right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
+      },
+      weekends: true,
+      events: [
+        {
+          title: 'All-day events can be displayed at the top',
+          start: '2024-06-17',
+          end: '2024-06-19',
+          color: 'purple'
+        }
+      ],
+      dateClick: handleDateClick,
+      eventClick: handleEventClick
+    })
+
+    // Função para lidar com cliques em datas
+    function handleDateClick(info) {
+      resetForm()
+      newEventStartDate.value = info.dateStr
+      showModal.value = true
     }
-  },
-  methods: {
-    handleDateClick(info) {
-      const title = prompt('Enter event title:')
-      if (title) {
-        this.calendarOptions = {
-          ...this.calendarOptions,
-          events: [
-            ...this.calendarOptions.events,
-            {
-              title: title,
-              start: info.dateStr
-            }
-          ]
+
+    // Função para lidar com cliques em eventos
+    function handleEventClick(info) {
+      console.log('Event clicked:', info) // Verifique se este log aparece no console
+      const action = confirm('Do you want to edit or delete this event? Click OK to edit, Cancel to delete.')
+      if (action) {
+        isEditMode.value = true
+        eventToEdit.value = info.event
+        newEventTitle.value = info.event.title
+        newEventStartDate.value = info.event.startStr
+        newEventEndDate.value = info.event.endStr ? info.event.endStr.slice(0, 10) : info.event.startStr
+        newEventColor.value = info.event.backgroundColor
+        newEventDescription.value = info.event.extendedProps.description
+        showModal.value = true
+      } else {
+        const deleteConfirm = confirm('Are you sure you want to delete this event?')
+        if (deleteConfirm) {
+          deleteEvent(info.event)
         }
       }
-    },
-    handleEventClick(info) {
-      alert(`Event: ${info.event.title}\nStart: ${info.event.start}\nEnd: ${info.event.end}`)
-    },
-    addEvent() {
-      if (this.newEventTitle && this.newEventStartDate) { // Start date is mandatory
-        this.calendarOptions = {
-          ...this.calendarOptions,
-          events: [
-            ...this.calendarOptions.events,
-            {
-              title: this.newEventTitle,
-              start: this.newEventStartDate,
-              end: this.newEventEndDate || this.newEventStartDate, // End date is optional
-              color: this.newEventColor,
-              description: this.newEventDescription // Include the description
-            }
-          ]
-        };
-        this.showModal = false; // Hide the modal after adding
-        // ... (reset input fields)
-        
-      } else {
-        alert('Please enter at least a title and start date for the event.');
-      }
     }
-  },
-  mounted() {
-  console.log(this.calendarOptions.events); // Imprime a lista de eventos após o componente ser montado
+
+    // Validação e salvamento de eventos
+    function validateAndSaveEvent() {
+      if (!newEventTitle.value) {
+        errorMessage.value = 'Title is required.'
+        return
+      }
+      if (!newEventStartDate.value) {
+        errorMessage.value = 'Start date is required.'
+        return
+      }
+      isEditMode.value ? saveEvent() : addEvent()
+    }
+
+    // Adição de novos eventos
+    function addEvent() {
+      calendarOptions.value = {
+        ...calendarOptions.value,
+        events: [
+          ...calendarOptions.value.events,
+          {
+            title: newEventTitle.value,
+            start: newEventStartDate.value,
+            end: newEventEndDate.value || newEventStartDate.value,
+            color: newEventColor.value,
+            description: newEventDescription.value
+          }
+        ]
+      }
+      closeModal()
+    }
+
+    // Salvamento de eventos existentes
+    function saveEvent() {
+      eventToEdit.value.setProp('title', newEventTitle.value)
+      eventToEdit.value.setStart(newEventStartDate.value)
+      eventToEdit.value.setEnd(newEventEndDate.value || newEventStartDate.value)
+      eventToEdit.value.setProp('backgroundColor', newEventColor.value)
+      eventToEdit.value.setExtendedProp('description', newEventDescription.value)
+      closeModal()
+    }
+
+    // Exclusão de eventos
+    function deleteEvent(event) {
+      event.remove()
+    }
+
+    // Fechamento do modal
+    function closeModal() {
+      resetForm()
+      showModal.value = false
+    }
+
+    // Reset do formulário
+    function resetForm() {
+      newEventTitle.value = ''
+      newEventStartDate.value = ''
+      newEventEndDate.value = ''
+      newEventColor.value = '#3788d8'
+      newEventDescription.value = ''
+      errorMessage.value = ''
+      isEditMode.value = false
+      eventToEdit.value = null
+    }
+
+    return {
+      showModal,
+      newEventTitle,
+      newEventStartDate,
+      newEventEndDate,
+      newEventColor,
+      newEventDescription,
+      errorMessage,
+      isEditMode,
+      eventToEdit,
+      calendarOptions,
+      handleDateClick,
+      handleEventClick,
+      validateAndSaveEvent,
+      addEvent,
+      saveEvent,
+      deleteEvent,
+      closeModal,
+      resetForm
+    }
   }
 }
 </script>
 
 <style>
-
 .Addbutton {
-  background-color: black; /* Gray background */
+  background-color: black;
   color: white;
-  padding: 8px 16px; /* Adjust padding as needed */
+  padding: 8px 16px;
   border: none;
-  border-radius: 4px; /* Slightly rounded corners */
+  border-radius: 4px;
   font-weight: bold;
   cursor: pointer;
-  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2); /* Subtle shadow */
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .Addbutton:hover {
-  background-color: #757575; /* Darker gray on hover */
+  background-color: #757575;
 }
+
 .modal {
   background-color: rgb(147, 147, 245);
   padding: 20px;
   border-radius: 5px;
 }
+
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
-  height: 100%; /* Semi-transparent background */
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 10;
 }
+
 #app {
   max-width: 85%;
   margin: 0 auto;
 }
+
 .calendar {
   margin-top: 20px;
 }
+
 .event-form {
   margin-top: 20px;
 }
+
 .event-form input {
   margin-right: 10px;
+}
+
+.error-message {
+  color: red;
+  margin-top: 10px;
 }
 </style>
